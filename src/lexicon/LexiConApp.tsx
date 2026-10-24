@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { buildSeedEntries } from "../data/seedPack";
+import { STATUS_LABEL } from "../lib/labels";
 import { buildQuizOptions } from "../lib/quiz";
 import { hashForScreen, screenFromHash } from "../lib/routing";
 import { applyReview, isDue, sortByDue } from "../lib/srs";
@@ -13,11 +14,11 @@ import {
 import type { Entry, Screen } from "../lib/types";
 
 const NAV: readonly { id: Screen; label: string }[] = [
-  { id: "home", label: "Home" },
-  { id: "catch", label: "Catch" },
-  { id: "bank", label: "Bank" },
-  { id: "cards", label: "Cards" },
-  { id: "quiz", label: "Quiz" },
+  { id: "home", label: "Главная" },
+  { id: "catch", label: "Поймать" },
+  { id: "bank", label: "Банк" },
+  { id: "cards", label: "Карточки" },
+  { id: "quiz", label: "Тест" },
 ];
 
 export function LexiConApp() {
@@ -64,11 +65,11 @@ export function LexiConApp() {
 
   const loadSeed = () => {
     if (entries.length > 0) {
-      const ok = window.confirm("Replace your current Lex bank with the demo pack?");
+      const ok = window.confirm("Заменить текущий банк демо-набором?");
       if (!ok) return;
     }
     persist(buildSeedEntries());
-    setToast("Demo pack loaded — try Cards or Quiz.");
+    setToast("Демо загружено — открой Карточки или Тест.");
     setScreen("cards");
   };
 
@@ -79,7 +80,7 @@ export function LexiConApp() {
           <span className="brand-kicker">Lex · NorthStar Vector</span>
           <span className="brand-name">LexiCon</span>
         </button>
-        <nav className="nav" aria-label="Primary">
+        <nav className="nav" aria-label="Основное меню">
           {NAV.map(({ id, label }) => (
             <button
               key={id}
@@ -107,7 +108,7 @@ export function LexiConApp() {
             entries={entries}
             onSaved={(next, updated) => {
               persist(next);
-              setToast(updated ? "Updated in Lex." : "Caught — saved to Lex.");
+              setToast(updated ? "Обновлено в Lex." : "Поймано — сохранено в Lex.");
             }}
           />
         )}
@@ -116,7 +117,7 @@ export function LexiConApp() {
             entries={entries}
             onRemove={(id) => {
               persist(removeEntry(id, entries));
-              setToast("Removed from Lex.");
+              setToast("Удалено из Lex.");
             }}
             onUpdate={(entry) => persist(upsertEntry(entry, entries))}
             onCatch={() => setScreen("catch")}
@@ -165,21 +166,21 @@ function Home({
     <>
       <section className="hero">
         <h1>
-          Catch words
+          Лови слова,
           <br />
-          while you read.
+          пока читаешь.
         </h1>
         <p>
-          Your bank. Your gloss. Flip cards and take short quizzes until the words stick —
-          no streaks, no AI theater.
+          Английское слово → свой перевод на русском. Карточки и короткий тест, пока не
+          запомнится. Без серий и без AI-театра.
         </p>
       </section>
 
       {total === 0 && (
         <div className="seed-banner">
-          <p>Empty Lex. Load 8 demo words and try the full loop in a minute.</p>
+          <p>Lex пустой. Загрузи 8 демо-слов и пройди весь цикл за минуту.</p>
           <button type="button" className="btn btn-soft" onClick={onSeed}>
-            Load demo pack
+            Загрузить демо
           </button>
         </div>
       )}
@@ -187,35 +188,35 @@ function Home({
       <div className="grid-actions">
         <button type="button" className="action-card" onClick={() => onGo("catch")}>
           <span className="n">01</span>
-          <strong>Catch</strong>
-          <span>Save a word from the text you are reading.</span>
+          <strong>Поймать</strong>
+          <span>Сохрани слово из текста, который читаешь.</span>
         </button>
         <button type="button" className="action-card" onClick={() => onGo("bank")}>
           <span className="n">02</span>
-          <strong>Bank</strong>
-          <span>Browse, search, and edit everything you kept.</span>
+          <strong>Банк</strong>
+          <span>Список, поиск и правка всего, что оставил.</span>
         </button>
         <button type="button" className="action-card" onClick={() => onGo("cards")}>
           <span className="n">03</span>
-          <strong>Cards</strong>
-          <span>Flip lemma ↔ gloss until it feels familiar.</span>
+          <strong>Карточки</strong>
+          <span>Переворот: слово EN ↔ перевод RU.</span>
         </button>
         <button type="button" className="action-card" onClick={() => onGo("quiz")}>
           <span className="n">04</span>
-          <strong>Quiz</strong>
-          <span>Four options. One right answer.</span>
+          <strong>Тест</strong>
+          <span>Четыре варианта. Один верный.</span>
         </button>
       </div>
       <div className="stats">
         <span>
-          In Lex: <b>{total}</b>
+          В Lex: <b>{total}</b>
         </span>
         <span>
-          Due now: <b>{due}</b>
+          К повтору: <b>{due}</b>
         </span>
         {total > 0 && (
           <button type="button" className="btn btn-ghost" onClick={onSeed}>
-            Reset demo pack
+            Сбросить на демо
           </button>
         )}
       </div>
@@ -245,17 +246,19 @@ function CatchScreen({
       setGloss("");
       setContext("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить.");
     }
   };
 
   return (
     <section className="panel">
-      <h2>Catch</h2>
-      <p className="lead">Word + your gloss. Context sentence is optional — keep the line you found it in.</p>
+      <h2>Поймать</h2>
+      <p className="lead">
+        Английское слово + твой перевод на русском. Предложение-контекст — по желанию.
+      </p>
       <form onSubmit={submit}>
         <div className="field">
-          <label htmlFor="surface">Word</label>
+          <label htmlFor="surface">Слово (EN)</label>
           <input
             id="surface"
             value={surface}
@@ -266,7 +269,7 @@ function CatchScreen({
           />
         </div>
         <div className="field">
-          <label htmlFor="gloss">Your gloss / translation</label>
+          <label htmlFor="gloss">Перевод / значение (RU)</label>
           <input
             id="gloss"
             value={gloss}
@@ -276,7 +279,7 @@ function CatchScreen({
           />
         </div>
         <div className="field">
-          <label htmlFor="context">Context sentence</label>
+          <label htmlFor="context">Предложение из текста</label>
           <textarea
             id="context"
             value={context}
@@ -286,7 +289,7 @@ function CatchScreen({
         </div>
         <div className="row">
           <button type="submit" className="btn">
-            Add to Lex
+            Добавить в Lex
           </button>
         </div>
         {error && <p className="error">{error}</p>}
@@ -336,30 +339,35 @@ function BankScreen({
     setEditingId(null);
   };
 
+  const wordWord =
+    entries.length === 1 ? "слово" : entries.length >= 2 && entries.length <= 4 ? "слова" : "слов";
+
   return (
     <section className="panel">
-      <h2>Bank</h2>
-      <p className="lead">{entries.length} words in Lex.</p>
+      <h2>Банк</h2>
+      <p className="lead">
+        {entries.length} {wordWord} в Lex.
+      </p>
       <input
         className="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search lemma, gloss, context…"
-        aria-label="Search bank"
+        placeholder="Поиск: слово, перевод, контекст…"
+        aria-label="Поиск по банку"
       />
       {filtered.length === 0 ? (
         <div className="empty">
           {entries.length === 0 ? (
             <>
               <button type="button" className="btn" onClick={onCatch}>
-                Catch a word
+                Поймать слово
               </button>
               <button type="button" className="btn btn-soft" onClick={onSeed}>
-                Load demo pack
+                Загрузить демо
               </button>
             </>
           ) : (
-            "No matches."
+            "Ничего не найдено."
           )}
         </div>
       ) : (
@@ -371,7 +379,7 @@ function BankScreen({
                 {editingId === e.id ? (
                   <div style={{ marginTop: 10 }}>
                     <div className="field">
-                      <label htmlFor={`g-${e.id}`}>Gloss</label>
+                      <label htmlFor={`g-${e.id}`}>Перевод (RU)</label>
                       <input
                         id={`g-${e.id}`}
                         value={editGloss}
@@ -379,7 +387,7 @@ function BankScreen({
                       />
                     </div>
                     <div className="field">
-                      <label htmlFor={`c-${e.id}`}>Context</label>
+                      <label htmlFor={`c-${e.id}`}>Контекст</label>
                       <textarea
                         id={`c-${e.id}`}
                         value={editContext}
@@ -388,14 +396,14 @@ function BankScreen({
                     </div>
                     <div className="row">
                       <button type="button" className="btn" onClick={() => saveEdit(e)}>
-                        Save
+                        Сохранить
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost"
                         onClick={() => setEditingId(null)}
                       >
-                        Cancel
+                        Отмена
                       </button>
                     </div>
                   </div>
@@ -406,16 +414,16 @@ function BankScreen({
               <span
                 className={`pill${e.status === "known" ? " pill-known" : e.status === "new" ? " pill-new" : ""}`}
               >
-                {e.status}
+                {STATUS_LABEL[e.status]}
               </span>
               {editingId !== e.id && e.context && <div className="meta">“{e.context}”</div>}
               {editingId !== e.id && (
                 <div className="row" style={{ gridColumn: "1 / -1" }}>
                   <button type="button" className="btn btn-soft" onClick={() => startEdit(e)}>
-                    Edit
+                    Изменить
                   </button>
                   <button type="button" className="btn btn-ghost" onClick={() => onRemove(e.id)}>
-                    Remove
+                    Удалить
                   </button>
                 </div>
               )}
@@ -481,14 +489,14 @@ function CardsScreen({
   if (entries.length === 0) {
     return (
       <section className="panel">
-        <h2>Cards</h2>
-        <p className="lead">Nothing to flip yet.</p>
+        <h2>Карточки</h2>
+        <p className="lead">Пока нечего переворачивать.</p>
         <div className="row">
           <button type="button" className="btn" onClick={onCatch}>
-            Catch a word
+            Поймать слово
           </button>
           <button type="button" className="btn btn-soft" onClick={onSeed}>
-            Load demo pack
+            Загрузить демо
           </button>
         </div>
       </section>
@@ -506,32 +514,32 @@ function CardsScreen({
 
   return (
     <section className="panel">
-      <h2>Cards</h2>
+      <h2>Карточки</h2>
       <p className="progress">
-        {queue.length > 0 ? `${queue.length} due` : "Reviewing bank"} · reviewed {done} ·{" "}
+        {queue.length > 0 ? `${queue.length} к повтору` : "По банку"} · пройдено {done} ·{" "}
         {index + 1}/{pool.length}
       </p>
-      <p className="hint">Space — flip · 1 — again · 2 — got it</p>
+      <p className="hint">Пробел — переворот · 1 — снова · 2 — знаю</p>
       <button
         type="button"
         className={`card-stage${flipped ? " is-back" : ""}`}
         onClick={() => setFlipped((f) => !f)}
-        aria-label={flipped ? "Show word" : "Show gloss"}
+        aria-label={flipped ? "Показать слово" : "Показать перевод"}
       >
-        <span className="face-kicker">{flipped ? "Gloss" : "Word"}</span>
+        <span className="face-kicker">{flipped ? "Перевод (RU)" : "Слово (EN)"}</span>
         <span className="face-main">{flipped ? current.gloss : current.surface}</span>
         {flipped && current.context ? (
           <span className="face-sub">“{current.context}”</span>
         ) : (
-          <span className="face-sub">Tap to flip</span>
+          <span className="face-sub">Нажми, чтобы перевернуть</span>
         )}
       </button>
       <div className="row">
         <button type="button" className="btn btn-ghost" onClick={() => grade(false)}>
-          Again
+          Снова
         </button>
         <button type="button" className="btn" onClick={() => grade(true)}>
-          Got it
+          Знаю
         </button>
       </div>
     </section>
@@ -573,14 +581,14 @@ function QuizScreen({
   if (entries.length === 0) {
     return (
       <section className="panel">
-        <h2>Quiz</h2>
-        <p className="lead">Need at least one word in Lex.</p>
+        <h2>Тест</h2>
+        <p className="lead">Нужно хотя бы одно слово в Lex.</p>
         <div className="row">
           <button type="button" className="btn" onClick={onCatch}>
-            Catch a word
+            Поймать слово
           </button>
           <button type="button" className="btn btn-soft" onClick={onSeed}>
-            Load demo pack
+            Загрузить демо
           </button>
         </div>
       </section>
@@ -605,9 +613,9 @@ function QuizScreen({
 
   return (
     <section className="panel">
-      <h2>Quiz</h2>
+      <h2>Тест</h2>
       <p className="progress">
-        What does this mean? · {index + 1}/{pool.length} · {score.ok} right · {score.miss} miss
+        Что значит это слово? · {index + 1}/{pool.length} · верно {score.ok} · мимо {score.miss}
       </p>
       <p className="quiz-prompt">{current.surface}</p>
       {current.context && (

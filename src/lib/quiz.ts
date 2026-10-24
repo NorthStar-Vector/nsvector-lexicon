@@ -12,14 +12,14 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 const FALLBACK_DISTRACTORS = [
-  "a quiet pause",
-  "to move carefully",
-  "something unexpected",
-  "a short delay",
-  "barely noticeable",
-  "to look closely",
-  "an open question",
-  "without hurry",
+  "тихая пауза",
+  "двигаться осторожно",
+  "что-то неожиданное",
+  "короткая задержка",
+  "едва заметный",
+  "смотреть внимательно",
+  "открытый вопрос",
+  "без спешки",
 ];
 
 /** Build 4 gloss options for a lemma quiz (1 correct + up to 3 from bank). */

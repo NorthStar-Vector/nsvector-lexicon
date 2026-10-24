@@ -37,7 +37,7 @@ export function catchWord(input: CatchInput, existing: Entry[]): { entries: Entr
   const gloss = input.gloss.trim();
   const lemma = normalizeLemma(surface);
   if (!lemma || !gloss) {
-    throw new Error("Word and gloss are required.");
+    throw new Error("Нужны слово и перевод.");
   }
 
   const now = Date.now();
