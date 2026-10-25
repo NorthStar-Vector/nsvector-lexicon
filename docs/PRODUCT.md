@@ -38,9 +38,11 @@ You are reading English (with or without a translation nearby). A word is worth 
 ## V1 scope
 
 - Local web desk (Vite + React + TypeScript).  
-- Persist entries in the browser (`localStorage`).  
+- Persist entries in the browser via **IndexedDB** (migrate once from legacy `localStorage` blob).  
+- JSON export / import of the personal bank.  
 - Simple due scheduling (wrong → sooner; right → stretch interval).  
-- Screens: Home → Catch → Bank → Cards | Quiz.
+- Screens: Home → Catch → Bank → Cards | Quiz.  
+- UI language: Russian; brand names LexiCon / Lex stay English (EN→RU learning).
 
 ## Wave 2 (not V1)
 

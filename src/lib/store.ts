@@ -1,7 +1,6 @@
+import { deleteEntryById, listEntries, putEntry, replaceAllEntries } from "./db";
 import { normalizeLemma, newId } from "./normalize";
 import type { Entry } from "./types";
-
-const STORAGE_KEY = "lexicon.entries.v1";
 
 export type CatchInput = {
   surface: string;
@@ -9,30 +8,33 @@ export type CatchInput = {
   context?: string;
 };
 
-function readRaw(): Entry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Entry[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+export type LexExport = {
+  version: 1;
+  product: "lexicon";
+  exportedAt: number;
+  entries: Entry[];
+};
+
+export async function loadEntries(): Promise<Entry[]> {
+  return listEntries();
 }
 
-function writeRaw(entries: Entry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+export async function saveEntries(entries: Entry[]): Promise<void> {
+  await replaceAllEntries(entries);
 }
 
-export function loadEntries(): Entry[] {
-  return readRaw().sort((a, b) => b.createdAt - a.createdAt);
+export async function saveEntry(entry: Entry): Promise<void> {
+  await putEntry(entry);
 }
 
-export function saveEntries(entries: Entry[]) {
-  writeRaw(entries);
+export async function deleteEntry(id: string): Promise<void> {
+  await deleteEntryById(id);
 }
 
-export function catchWord(input: CatchInput, existing: Entry[]): { entries: Entry[]; entry: Entry; updated: boolean } {
+export function catchWord(
+  input: CatchInput,
+  existing: Entry[],
+): { entries: Entry[]; entry: Entry; updated: boolean } {
   const surface = input.surface.trim();
   const gloss = input.gloss.trim();
   const lemma = normalizeLemma(surface);
@@ -80,4 +82,50 @@ export function upsertEntry(entry: Entry, existing: Entry[]): Entry[] {
   const next = [...existing];
   next[i] = entry;
   return next;
+}
+
+export function buildExportPayload(entries: Entry[]): LexExport {
+  return {
+    version: 1,
+    product: "lexicon",
+    exportedAt: Date.now(),
+    entries,
+  };
+}
+
+export function parseImportPayload(raw: string): Entry[] {
+  const data = JSON.parse(raw) as LexExport | Entry[];
+  const list = Array.isArray(data) ? data : data.entries;
+  if (!Array.isArray(list)) {
+    throw new Error("Неверный формат файла.");
+  }
+  return list.filter(
+    (e) =>
+      e &&
+      typeof e === "object" &&
+      typeof (e as Entry).id === "string" &&
+      typeof (e as Entry).lemma === "string" &&
+      typeof (e as Entry).surface === "string" &&
+      typeof (e as Entry).gloss === "string",
+  ) as Entry[];
+}
+
+/** Merge import into bank by lemma (incoming wins on conflict). */
+export function mergeByLemma(existing: Entry[], incoming: Entry[]): Entry[] {
+  const map = new Map<string, Entry>();
+  for (const e of existing) map.set(e.lemma, e);
+  for (const e of incoming) {
+    const prev = map.get(e.lemma);
+    if (!prev) {
+      map.set(e.lemma, e);
+      continue;
+    }
+    map.set(e.lemma, {
+      ...prev,
+      ...e,
+      id: prev.id,
+      createdAt: Math.min(prev.createdAt, e.createdAt || prev.createdAt),
+    });
+  }
+  return [...map.values()].sort((a, b) => b.createdAt - a.createdAt);
 }

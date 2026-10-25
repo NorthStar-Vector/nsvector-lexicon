@@ -5,13 +5,20 @@ import { buildQuizOptions } from "../lib/quiz";
 import { hashForScreen, screenFromHash } from "../lib/routing";
 import { applyReview, isDue, sortByDue } from "../lib/srs";
 import {
+  buildExportPayload,
   catchWord,
+  deleteEntry,
   loadEntries,
+  mergeByLemma,
+  parseImportPayload,
   removeEntry,
   saveEntries,
+  saveEntry,
   upsertEntry,
 } from "../lib/store";
-import type { Entry, Screen } from "../lib/types";
+import type { Entry, EntryStatus, Screen } from "../lib/types";
+
+type BankFilter = "all" | "due" | EntryStatus;
 
 const NAV: readonly { id: Screen; label: string }[] = [
   { id: "home", label: "Главная" },
@@ -38,21 +45,23 @@ export function LexiConApp() {
   };
 
   useEffect(() => {
-    setEntries(loadEntries());
-    setHydrated(true);
+    let cancelled = false;
+    void (async () => {
+      const list = await loadEntries();
+      if (!cancelled) {
+        setEntries(list);
+        setHydrated(true);
+      }
+    })();
     const onHash = () => setScreenState(screenFromHash(window.location.hash));
     window.addEventListener("hashchange", onHash);
     window.addEventListener("popstate", onHash);
     return () => {
+      cancelled = true;
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("popstate", onHash);
     };
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveEntries(entries);
-  }, [entries, hydrated]);
 
   useEffect(() => {
     if (!toast) return;
@@ -61,16 +70,80 @@ export function LexiConApp() {
   }, [toast]);
 
   const dueCount = useMemo(() => entries.filter((e) => isDue(e)).length, [entries]);
-  const persist = (next: Entry[]) => setEntries(next);
+  const statusCounts = useMemo(() => {
+    const c = { new: 0, learning: 0, known: 0 };
+    for (const e of entries) c[e.status] += 1;
+    return c;
+  }, [entries]);
 
-  const loadSeed = () => {
+  const replaceBank = async (next: Entry[]) => {
+    setEntries(next);
+    await saveEntries(next);
+  };
+
+  const persistOne = async (entry: Entry, next: Entry[]) => {
+    setEntries(next);
+    await saveEntry(entry);
+  };
+
+  const removeOne = async (id: string) => {
+    setEntries((prev) => removeEntry(id, prev));
+    await deleteEntry(id);
+    setToast("Удалено из Lex.");
+  };
+
+  const loadSeed = async () => {
     if (entries.length > 0) {
       const ok = window.confirm("Заменить текущий банк демо-набором?");
       if (!ok) return;
     }
-    persist(buildSeedEntries());
+    await replaceBank(buildSeedEntries());
     setToast("Демо загружено — открой Карточки или Тест.");
     setScreen("cards");
+  };
+
+  const exportBank = () => {
+    const payload = buildExportPayload(entries);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lexicon-bank-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToast("Экспорт скачан.");
+  };
+
+  const importBank = async (file: File) => {
+    try {
+      const text = await file.text();
+      const incoming = parseImportPayload(text);
+      if (incoming.length === 0) {
+        setToast("В файле нет слов.");
+        return;
+      }
+      const merge = window.confirm(
+        `Найдено ${incoming.length} слов. Слить с текущим банком?\nОК — слить · Отмена — спросить про замену`,
+      );
+      let next: Entry[];
+      if (merge) {
+        next = mergeByLemma(entries, incoming);
+      } else {
+        const replace = window.confirm("Заменить банк целиком этим файлом?");
+        if (!replace) {
+          setToast("Импорт отменён.");
+          return;
+        }
+        next = incoming;
+      }
+      await replaceBank(next);
+      setToast(merge ? "Импорт слит с банком." : "Банк заменён из файла.");
+      setScreen("bank");
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Не удалось импортировать.");
+    }
   };
 
   return (
@@ -94,53 +167,59 @@ export function LexiConApp() {
         </nav>
       </header>
 
-      <div key={screen} className="screen-enter">
-        {screen === "home" && (
-          <Home
-            total={entries.length}
-            due={dueCount}
-            onGo={setScreen}
-            onSeed={loadSeed}
-          />
-        )}
-        {screen === "catch" && (
-          <CatchScreen
-            entries={entries}
-            onSaved={(next, updated) => {
-              persist(next);
-              setToast(updated ? "Обновлено в Lex." : "Поймано — сохранено в Lex.");
-            }}
-          />
-        )}
-        {screen === "bank" && (
-          <BankScreen
-            entries={entries}
-            onRemove={(id) => {
-              persist(removeEntry(id, entries));
-              setToast("Удалено из Lex.");
-            }}
-            onUpdate={(entry) => persist(upsertEntry(entry, entries))}
-            onCatch={() => setScreen("catch")}
-            onSeed={loadSeed}
-          />
-        )}
-        {screen === "cards" && (
-          <CardsScreen
-            entries={entries}
-            onUpdate={(entry) => persist(upsertEntry(entry, entries))}
-            onCatch={() => setScreen("catch")}
-            onSeed={loadSeed}
-          />
-        )}
-        {screen === "quiz" && (
-          <QuizScreen
-            entries={entries}
-            onUpdate={(entry) => persist(upsertEntry(entry, entries))}
-            onCatch={() => setScreen("catch")}
-            onSeed={loadSeed}
-          />
-        )}
-      </div>
+      {!hydrated ? (
+        <p className="storage-note">Открываю банк…</p>
+      ) : (
+        <div key={screen} className="screen-enter">
+          {screen === "home" && (
+            <Home
+              total={entries.length}
+              due={dueCount}
+              counts={statusCounts}
+              onGo={setScreen}
+              onSeed={() => void loadSeed()}
+              onExport={exportBank}
+              onImportFile={(f) => void importBank(f)}
+            />
+          )}
+          {screen === "catch" && (
+            <CatchScreen
+              entries={entries}
+              onSaved={(next, entry, updated) => {
+                void persistOne(entry, next);
+                setToast(updated ? "Обновлено в Lex." : "Поймано — сохранено в Lex.");
+              }}
+            />
+          )}
+          {screen === "bank" && (
+            <BankScreen
+              entries={entries}
+              onRemove={(id) => void removeOne(id)}
+              onUpdate={(entry) => void persistOne(entry, upsertEntry(entry, entries))}
+              onCatch={() => setScreen("catch")}
+              onSeed={() => void loadSeed()}
+              onExport={exportBank}
+              onImportFile={(f) => void importBank(f)}
+            />
+          )}
+          {screen === "cards" && (
+            <CardsScreen
+              entries={entries}
+              onUpdate={(entry) => void persistOne(entry, upsertEntry(entry, entries))}
+              onCatch={() => setScreen("catch")}
+              onSeed={() => void loadSeed()}
+            />
+          )}
+          {screen === "quiz" && (
+            <QuizScreen
+              entries={entries}
+              onUpdate={(entry) => void persistOne(entry, upsertEntry(entry, entries))}
+              onCatch={() => setScreen("catch")}
+              onSeed={() => void loadSeed()}
+            />
+          )}
+        </div>
+      )}
 
       {toast && (
         <div className="toast" role="status">
@@ -154,13 +233,19 @@ export function LexiConApp() {
 function Home({
   total,
   due,
+  counts,
   onGo,
   onSeed,
+  onExport,
+  onImportFile,
 }: {
   total: number;
   due: number;
+  counts: { new: number; learning: number; known: number };
   onGo: (s: Screen) => void;
   onSeed: () => void;
+  onExport: () => void;
+  onImportFile: (file: File) => void;
 }) {
   return (
     <>
@@ -172,7 +257,7 @@ function Home({
         </h1>
         <p>
           Английское слово → свой перевод на русском. Карточки и короткий тест, пока не
-          запомнится. Без серий и без AI-театра.
+          запомнится. Банк хранится локально в IndexedDB.
         </p>
       </section>
 
@@ -214,12 +299,36 @@ function Home({
         <span>
           К повтору: <b>{due}</b>
         </span>
+        <span>
+          новое <b>{counts.new}</b> · учу <b>{counts.learning}</b> · знаю <b>{counts.known}</b>
+        </span>
+      </div>
+      <div className="row" style={{ marginTop: 14 }}>
+        <button type="button" className="btn btn-soft" onClick={onExport} disabled={total === 0}>
+          Экспорт JSON
+        </button>
+        <label className="btn btn-ghost" style={{ display: "inline-flex", cursor: "pointer" }}>
+          Импорт JSON
+          <input
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportFile(f);
+              e.target.value = "";
+            }}
+          />
+        </label>
         {total > 0 && (
           <button type="button" className="btn btn-ghost" onClick={onSeed}>
             Сбросить на демо
           </button>
         )}
       </div>
+      <p className="storage-note" style={{ marginTop: 12 }}>
+        Данные на этом устройстве. Экспорт — запасная копия банка.
+      </p>
     </>
   );
 }
@@ -229,7 +338,7 @@ function CatchScreen({
   onSaved,
 }: {
   entries: Entry[];
-  onSaved: (next: Entry[], updated: boolean) => void;
+  onSaved: (next: Entry[], entry: Entry, updated: boolean) => void;
 }) {
   const [surface, setSurface] = useState("");
   const [gloss, setGloss] = useState("");
@@ -240,8 +349,11 @@ function CatchScreen({
     e.preventDefault();
     setError("");
     try {
-      const { entries: next, updated } = catchWord({ surface, gloss, context }, entries);
-      onSaved(next, updated);
+      const { entries: next, entry, updated } = catchWord(
+        { surface, gloss, context },
+        entries,
+      );
+      onSaved(next, entry, updated);
       setSurface("");
       setGloss("");
       setContext("");
@@ -304,29 +416,37 @@ function BankScreen({
   onUpdate,
   onCatch,
   onSeed,
+  onExport,
+  onImportFile,
 }: {
   entries: Entry[];
   onRemove: (id: string) => void;
   onUpdate: (e: Entry) => void;
   onCatch: () => void;
   onSeed: () => void;
+  onExport: () => void;
+  onImportFile: (file: File) => void;
 }) {
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<BankFilter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editGloss, setEditGloss] = useState("");
   const [editContext, setEditContext] = useState("");
 
   const filtered = useMemo(() => {
+    let list = entries;
+    if (filter === "due") list = list.filter((e) => isDue(e));
+    else if (filter !== "all") list = list.filter((e) => e.status === filter);
     const needle = q.trim().toLowerCase();
-    if (!needle) return entries;
-    return entries.filter(
+    if (!needle) return list;
+    return list.filter(
       (e) =>
         e.lemma.includes(needle) ||
         e.surface.toLowerCase().includes(needle) ||
         e.gloss.toLowerCase().includes(needle) ||
         e.context.toLowerCase().includes(needle),
     );
-  }, [entries, q]);
+  }, [entries, q, filter]);
 
   const startEdit = (e: Entry) => {
     setEditingId(e.id);
@@ -342,12 +462,32 @@ function BankScreen({
   const wordWord =
     entries.length === 1 ? "слово" : entries.length >= 2 && entries.length <= 4 ? "слова" : "слов";
 
+  const filters: { id: BankFilter; label: string }[] = [
+    { id: "all", label: "Все" },
+    { id: "due", label: "К повтору" },
+    { id: "new", label: "Новое" },
+    { id: "learning", label: "Учу" },
+    { id: "known", label: "Знаю" },
+  ];
+
   return (
     <section className="panel">
       <h2>Банк</h2>
       <p className="lead">
-        {entries.length} {wordWord} в Lex.
+        {entries.length} {wordWord} в Lex · показано {filtered.length}
       </p>
+      <div className="filters" role="group" aria-label="Фильтр банка">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            aria-pressed={filter === f.id}
+            onClick={() => setFilter(f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       <input
         className="search"
         value={q}
@@ -355,6 +495,24 @@ function BankScreen({
         placeholder="Поиск: слово, перевод, контекст…"
         aria-label="Поиск по банку"
       />
+      <div className="row" style={{ marginBottom: 14 }}>
+        <button type="button" className="btn btn-soft" onClick={onExport} disabled={entries.length === 0}>
+          Экспорт
+        </button>
+        <label className="btn btn-ghost" style={{ display: "inline-flex", cursor: "pointer" }}>
+          Импорт
+          <input
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onImportFile(file);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
       {filtered.length === 0 ? (
         <div className="empty">
           {entries.length === 0 ? (
